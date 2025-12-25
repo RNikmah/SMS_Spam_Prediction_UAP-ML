@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import torch
 import pickle
+import os
 
 from transformers import (
     AutoTokenizer,
@@ -18,6 +19,19 @@ st.set_page_config(
     page_icon="📩",
     layout="wide"
 )
+
+# ======================================================
+# PATH CONFIGURATION
+# ======================================================
+# Dapatkan directory dari file ini
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Path untuk BiLSTM model
+BILSTM_MODEL_PATH = os.path.join(BASE_DIR, "models", "bilstm_spam_model.keras")
+BILSTM_TOKENIZER_PATH = os.path.join(BASE_DIR, "models", "bilstm_tokenizer.pkl")
+
+# Path untuk assets
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 # ======================================================
 # CUSTOM CSS
@@ -64,52 +78,106 @@ st.markdown("""
 # ======================================================
 @st.cache_resource
 def load_bilstm():
-    model = load_model("models/bilstm_spam_model.keras")
-    tokenizer = pickle.load(open("models/bilstm_tokenizer.pkl", "rb"))
-    return model, tokenizer
+    """Load BiLSTM model dan tokenizer dari file lokal"""
+    try:
+        # Debug: Print paths untuk troubleshooting
+        print(f"[DEBUG] BASE_DIR: {BASE_DIR}")
+        print(f"[DEBUG] Current working directory: {os.getcwd()}")
+        print(f"[DEBUG] Looking for model at: {BILSTM_MODEL_PATH}")
+        print(f"[DEBUG] Model exists: {os.path.exists(BILSTM_MODEL_PATH)}")
+        
+        if not os.path.exists(BILSTM_MODEL_PATH):
+            st.error(f"❌ Model BiLSTM tidak ditemukan di: {BILSTM_MODEL_PATH}")
+            st.info(f"Current working directory: {os.getcwd()}")
+            st.info(f"BASE_DIR: {BASE_DIR}")
+            return None, None
+        
+        model = load_model(BILSTM_MODEL_PATH)
+        
+        if not os.path.exists(BILSTM_TOKENIZER_PATH):
+            st.error(f"❌ Tokenizer BiLSTM tidak ditemukan di: {BILSTM_TOKENIZER_PATH}")
+            return None, None
+            
+        with open(BILSTM_TOKENIZER_PATH, "rb") as f:
+            tokenizer = pickle.load(f)
+        
+        print("[DEBUG] BiLSTM model loaded successfully")
+        return model, tokenizer
+        
+    except Exception as e:
+        st.error(f"❌ Error loading BiLSTM: {str(e)}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return None, None
 
 @st.cache_resource
 def load_transformer(model_choice):
     """Load BERT/DistilBERT dari Hugging Face Hub"""
-    if model_choice == "BERT":
-        repo_id = "Rahma13/spam-detection-bert"
-    else:  # DistilBERT
-        repo_id = "Rahma13/spam-detection-distilbert"
-    
-    tokenizer = AutoTokenizer.from_pretrained(repo_id)
-    model = AutoModelForSequenceClassification.from_pretrained(repo_id)
-    model.eval()
-    return tokenizer, model
+    try:
+        if model_choice == "BERT":
+            repo_id = "Rahma13/spam-detection-bert"
+        else:  # DistilBERT
+            repo_id = "Rahma13/spam-detection-distilbert"
+        
+        tokenizer = AutoTokenizer.from_pretrained(repo_id)
+        model = AutoModelForSequenceClassification.from_pretrained(repo_id)
+        model.eval()
+        return tokenizer, model
+        
+    except Exception as e:
+        st.error(f"❌ Error loading {model_choice}: {str(e)}")
+        return None, None
 
 # ======================================================
 # PREDICTION FUNCTION
 # ======================================================
 def predict(text, model_choice):
+    """Fungsi prediksi untuk semua model"""
+    
     if model_choice == "BiLSTM":
         model, tokenizer = load_bilstm()
+        
+        if model is None or tokenizer is None:
+            st.error("❌ BiLSTM model gagal dimuat. Silakan gunakan model lain.")
+            return "Error", 0.0
+        
         seq = tokenizer.texts_to_sequences([text])
-        pad = pad_sequences(seq, maxlen=100)
-        prob = model.predict(pad)[0][0]
+        pad = pad_sequences(seq, maxlen=100, padding="post")
+        prob = model.predict(pad, verbose=0)[0][0]
         label = "Spam" if prob > 0.5 else "Ham"
-        confidence = prob if label == "Spam" else 1 - prob
+        confidence = float(prob) if label == "Spam" else float(1 - prob)
 
     elif model_choice == "BERT":
         tokenizer, model = load_transformer("BERT")
-        inputs = tokenizer(text, return_tensors="pt", truncation=True)
+        
+        if model is None or tokenizer is None:
+            st.error("❌ BERT model gagal dimuat.")
+            return "Error", 0.0
+        
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=128)
         with torch.no_grad():
-            probs = torch.softmax(model(**inputs).logits, dim=1)[0]
+            outputs = model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=1)[0]
         confidence, idx = torch.max(probs, dim=0)
         label = ["Ham", "Spam"][idx]
+        confidence = float(confidence)
 
     else:  # DistilBERT
         tokenizer, model = load_transformer("DistilBERT")
-        inputs = tokenizer(text, return_tensors="pt", truncation=True)
+        
+        if model is None or tokenizer is None:
+            st.error("❌ DistilBERT model gagal dimuat.")
+            return "Error", 0.0
+        
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=128)
         with torch.no_grad():
-            probs = torch.softmax(model(**inputs).logits, dim=1)[0]
+            outputs = model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=1)[0]
         confidence, idx = torch.max(probs, dim=0)
         label = ["Ham", "Spam"][idx]
+        confidence = float(confidence)
 
-    return label, float(confidence)
+    return label, confidence
 
 # ======================================================
 # SIDEBAR
@@ -126,7 +194,7 @@ st.sidebar.title("⚙️ Pengaturan")
 
 model_choice = st.sidebar.selectbox(
     "Pilih Model",
-    ["BiLSTM", "BERT", "DistilBERT"]
+    ["BERT", "DistilBERT", "BiLSTM"]  # BERT & DistilBERT lebih stabil
 )
 
 threshold = st.sidebar.slider(
@@ -177,34 +245,37 @@ if page == "🔍 Deteksi":
         else:
             with st.spinner(f"🔍 Menganalisis dengan {model_choice}..."):
                 label, confidence = predict(text_input, model_choice)
-
-                final_label = (
-                    "Spam" if (label == "Spam" and confidence >= threshold)
-                    else "Ham"
-                )
+                
+                if label == "Error":
+                    st.error("❌ Prediksi gagal. Silakan coba model lain.")
+                else:
+                    final_label = (
+                        "Spam" if (label == "Spam" and confidence >= threshold)
+                        else "Ham"
+                    )
 
                 badge_class = "spam" if final_label == "Spam" else "ham"
 
-                with result_container:
-                    st.markdown(
-                        f"<span class='badge {badge_class}'>{final_label}</span>",
-                        unsafe_allow_html=True
-                    )
+                    with result_container:
+                        st.markdown(
+                            f"<span class='badge {badge_class}'>{final_label}</span>",
+                            unsafe_allow_html=True
+                        )
 
-                    st.progress(confidence)
+                        st.progress(confidence)
+                        
+                        col_metric1, col_metric2 = st.columns(2)
+                        col_metric1.metric("Confidence", f"{confidence:.2%}")
+                        col_metric2.metric("Model", model_choice)
+
+                        st.session_state.history.insert(0, {
+                        "Text": text_input[:40] + "..." if len(text_input) > 40 else text_input,
+                        "Model": model_choice,
+                        "Prediction": final_label,
+                        "Confidence": round(confidence, 3)
+                    })
                     
-                    col_metric1, col_metric2 = st.columns(2)
-                    col_metric1.metric("Confidence", f"{confidence:.2%}")
-                    col_metric2.metric("Model", model_choice)
-
-                st.session_state.history.insert(0, {
-                    "Text": text_input[:40] + "..." if len(text_input) > 40 else text_input,
-                    "Model": model_choice,
-                    "Prediction": final_label,
-                    "Confidence": round(confidence, 3)
-                })
-                
-                st.success("✅ Prediksi berhasil!")
+                    st.success("✅ Prediksi berhasil!")
 
     # ======================================================
     # HISTORY
@@ -303,20 +374,25 @@ elif page == "📊 Evaluasi Model":
     
     col1, col2, col3 = st.columns(3)
 
-    if model_choice == "BiLSTM":
-        col1.image("assets/Plot Acc BiLSTM.png", caption="Plot Accuracy", use_container_width=True)
-        col2.image("assets/Plot Loss BiLSTM.png", caption="Plot Loss", use_container_width=True)
-        col3.image("assets/Confusion Matrix BiLSTM.png", caption="Confusion Matrix", use_container_width=True)
+    # Gunakan path yang benar untuk assets
+    try:
+        if model_choice == "BiLSTM":
+            col1.image(os.path.join(ASSETS_DIR, "Plot Acc BiLSTM.png"), caption="Plot Accuracy", use_container_width=True)
+            col2.image(os.path.join(ASSETS_DIR, "Plot Loss BiLSTM.png"), caption="Plot Loss", use_container_width=True)
+            col3.image(os.path.join(ASSETS_DIR, "Confusion Matrix BiLSTM.png"), caption="Confusion Matrix", use_container_width=True)
 
-    elif model_choice == "BERT":
-        col1.image("assets/Plot Acc BERT.png", caption="Plot Accuracy", use_container_width=True)
-        col2.image("assets/Plot Loss BERT.png", caption="Plot Loss", use_container_width=True)
-        col3.image("assets/Confusion Matrix BERT.png", caption="Confusion Matrix", use_container_width=True)
+        elif model_choice == "BERT":
+            col1.image(os.path.join(ASSETS_DIR, "Plot Acc BERT.png"), caption="Plot Accuracy", use_container_width=True)
+            col2.image(os.path.join(ASSETS_DIR, "Plot Loss BERT.png"), caption="Plot Loss", use_container_width=True)
+            col3.image(os.path.join(ASSETS_DIR, "Confusion Matrix BERT.png"), caption="Confusion Matrix", use_container_width=True)
 
-    else:
-        col1.image("assets/Plot Acc DistilBERT.png", caption="Plot Accuracy", use_container_width=True)
-        col2.image("assets/Plot Loss DistilBERT.png", caption="Plot Loss", use_container_width=True)
-        col3.image("assets/Confusion Matrix DistilBERT.png", caption="Confusion Matrix", use_container_width=True)
+        else:
+            col1.image(os.path.join(ASSETS_DIR, "Plot Acc DistilBERT.png"), caption="Plot Accuracy", use_container_width=True)
+            col2.image(os.path.join(ASSETS_DIR, "Plot Loss DistilBERT.png"), caption="Plot Loss", use_container_width=True)
+            col3.image(os.path.join(ASSETS_DIR, "Confusion Matrix DistilBERT.png"), caption="Confusion Matrix", use_container_width=True)
+    except Exception as e:
+        st.error(f"❌ Error loading images: {str(e)}")
+        st.info(f"📂 Assets directory: {ASSETS_DIR}")
 
     st.markdown("---")
     st.caption("📌 Evaluasi dilakukan pada test set secara offline.")
