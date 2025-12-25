@@ -64,8 +64,8 @@ st.markdown("""
 # ======================================================
 @st.cache_resource
 def load_bilstm():
-    model = load_model("models/bilstm/bilstm_spam_model.keras")
-    tokenizer = pickle.load(open("models/bilstm/bilstm_tokenizer.pkl", "rb"))
+    model = load_model("models/bilstm_spam_model.keras")
+    tokenizer = pickle.load(open("models/bilstm_tokenizer.pkl", "rb"))
     return model, tokenizer
 
 @st.cache_resource

@@ -1,8 +1,13 @@
 # 📩 Spam Detection System with Deep Learning & Transformer Models
+## 🚀 Live Demo
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://smsspampredictionuap-ml-rahma.streamlit.app/)
+
+Coba aplikasi langsung tanpa instalasi! Klik badge di atas untuk mengakses live demo.
+
+---
 ## � Daftar Isi
-
-- [Latar Belakang](#-latar-belakang)
+- [Live Demo](#-live-demo)- [Latar Belakang](#-latar-belakang)
 - [Deskripsi Proyek](#-deskripsi-proyek)
 - [Dataset & Preprocessing](#-dataset--preprocessing)
 - [Model yang Digunakan](#-model-yang-digunakan)
