@@ -80,34 +80,19 @@ st.markdown("""
 def load_bilstm():
     """Load BiLSTM model dan tokenizer dari file lokal"""
     try:
-        # Debug: Print paths untuk troubleshooting
-        print(f"[DEBUG] BASE_DIR: {BASE_DIR}")
-        print(f"[DEBUG] Current working directory: {os.getcwd()}")
-        print(f"[DEBUG] Looking for model at: {BILSTM_MODEL_PATH}")
-        print(f"[DEBUG] Model exists: {os.path.exists(BILSTM_MODEL_PATH)}")
-        
         if not os.path.exists(BILSTM_MODEL_PATH):
             st.error(f"❌ Model BiLSTM tidak ditemukan di: {BILSTM_MODEL_PATH}")
-            st.info(f"Current working directory: {os.getcwd()}")
-            st.info(f"BASE_DIR: {BASE_DIR}")
             return None, None
         
         model = load_model(BILSTM_MODEL_PATH)
         
-        if not os.path.exists(BILSTM_TOKENIZER_PATH):
-            st.error(f"❌ Tokenizer BiLSTM tidak ditemukan di: {BILSTM_TOKENIZER_PATH}")
-            return None, None
-            
         with open(BILSTM_TOKENIZER_PATH, "rb") as f:
             tokenizer = pickle.load(f)
         
-        print("[DEBUG] BiLSTM model loaded successfully")
         return model, tokenizer
         
     except Exception as e:
         st.error(f"❌ Error loading BiLSTM: {str(e)}")
-        import traceback
-        st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
 
 @st.cache_resource
@@ -254,7 +239,7 @@ if page == "🔍 Deteksi":
                         else "Ham"
                     )
 
-                badge_class = "spam" if final_label == "Spam" else "ham"
+                    badge_class = "spam" if final_label == "Spam" else "ham"
 
                     with result_container:
                         st.markdown(
@@ -269,11 +254,11 @@ if page == "🔍 Deteksi":
                         col_metric2.metric("Model", model_choice)
 
                         st.session_state.history.insert(0, {
-                        "Text": text_input[:40] + "..." if len(text_input) > 40 else text_input,
-                        "Model": model_choice,
-                        "Prediction": final_label,
-                        "Confidence": round(confidence, 3)
-                    })
+                            "Text": text_input[:40] + "..." if len(text_input) > 40 else text_input,
+                            "Model": model_choice,
+                            "Prediction": final_label,
+                            "Confidence": round(confidence, 3)
+                        })
                     
                     st.success("✅ Prediksi berhasil!")
 
