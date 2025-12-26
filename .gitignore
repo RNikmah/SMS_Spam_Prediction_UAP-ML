@@ -48,3 +48,6 @@ desktop.ini
 
 # Git LFS
 .gitattributes
+
+#streamlit container
+.devcontainer/
